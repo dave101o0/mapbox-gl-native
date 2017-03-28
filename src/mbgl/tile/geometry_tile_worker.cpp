@@ -83,11 +83,6 @@ void GeometryTileWorker::setData(std::unique_ptr<const GeometryTileData> data_, 
         switch (state) {
         case Idle:
             redoLayout();
-            if (!hasPendingSymbolDependencies()) {
-                coalesce();
-            } else {
-                state = NeedPlacement;
-            }
             break;
 
         case Coalescing:
@@ -110,11 +105,6 @@ void GeometryTileWorker::setLayers(std::vector<std::unique_ptr<Layer>> layers_, 
         switch (state) {
         case Idle:
             redoLayout();
-            if (!hasPendingSymbolDependencies()) {
-                coalesce();
-            } else {
-                state = NeedPlacement;
-            }
             break;
 
         case Coalescing:
@@ -138,7 +128,6 @@ void GeometryTileWorker::setPlacementConfig(PlacementConfig placementConfig_, ui
         switch (state) {
         case Idle:
             attemptPlacement();
-            coalesce();
             break;
 
         case Coalescing:
@@ -155,12 +144,14 @@ void GeometryTileWorker::setPlacementConfig(PlacementConfig placementConfig_, ui
 }
 
 void GeometryTileWorker::onGlyphsAvailable(GlyphPositionMap glyphs) {
+    assert(waitingForGlyphs);
     glyphPositions = std::move(glyphs);
     waitingForGlyphs = false;
     symbolDependenciesChanged();
 }
 
 void GeometryTileWorker::onIconsAvailable(IconAtlasMap icons_) {
+    assert(waitingForIcons);
     icons = std::move(icons_);
     waitingForIcons = false;
     symbolDependenciesChanged();
@@ -174,23 +165,15 @@ void GeometryTileWorker::symbolDependenciesChanged() {
     try {
         switch (state) {
         case NeedPlacement:
-            if (!hasPendingSymbolDependencies()) {
-                attemptPlacement();
-                coalesce();
-            }
+            attemptPlacement();
             break;
 
         case NeedLayout:
             if (!hasPendingSymbolDependencies()) {
                 redoLayout();
-                if (!hasPendingSymbolDependencies()) {
-                    coalesce();
-                } else {
-                    state = NeedPlacement;
-                }
             }
             break;
-
+    
         case Idle:
         case Coalescing:
             assert(false);
@@ -214,18 +197,10 @@ void GeometryTileWorker::coalesced() {
 
         case NeedLayout:
             redoLayout();
-            if (!hasPendingSymbolDependencies()) {
-                coalesce();
-            } else {
-                state = NeedPlacement;
-            }
             break;
 
         case NeedPlacement:
             attemptPlacement();
-            if (!hasPendingSymbolDependencies()) {
-                coalesce();
-            }
             break;
         }
     } catch (...) {
@@ -233,13 +208,33 @@ void GeometryTileWorker::coalesced() {
     }
 }
 
-void GeometryTileWorker::coalesce() {
-    state = Coalescing;
-    self.invoke(&GeometryTileWorker::coalesced);
+bool GeometryTileWorker::hasGlyphDependencies(const GlyphDependencies& glyphDependencies) const {
+    for (auto fontDependencies : glyphDependencies) {
+        auto fontGlyphs = glyphPositions.find(fontDependencies.first);
+        if (fontGlyphs == glyphPositions.end()) {
+            return false;
+        }
+        for (auto glyphID : fontDependencies.second) {
+            if (fontGlyphs->second.find(glyphID) == fontGlyphs->second.end()) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+bool GeometryTileWorker::hasIconDependencies(const IconDependencyMap &iconDependencies) const {
+    for (auto atlasDependency : iconDependencies) {
+        if (icons.find((uintptr_t)atlasDependency.first) == icons.end()) {
+            return false;
+        }
+    }
+    return true;
 }
 
 void GeometryTileWorker::redoLayout() {
     if (!data || !layers) {
+        // Waiting for initial configuration
         return;
     }
 
@@ -257,9 +252,6 @@ void GeometryTileWorker::redoLayout() {
     
     GlyphDependencies glyphDependencies;
     IconDependencyMap iconDependencyMap;
-    
-    glyphPositions.clear();
-    icons.clear();
 
     std::vector<std::vector<const Layer*>> groups = groupByLayout(*layers);
     for (auto& group : groups) {
@@ -322,12 +314,14 @@ void GeometryTileWorker::redoLayout() {
         }
     }
     
-    if (!glyphDependencies.empty()) {
+    if (!hasGlyphDependencies(glyphDependencies)) {
+        glyphPositions.clear();
         waitingForGlyphs = true;
         parent.invoke(&GeometryTile::getGlyphs, std::move(glyphDependencies));
     }
     
-    if (!iconDependencyMap.empty()) {
+    if (!hasIconDependencies(iconDependencyMap)) {
+        icons.clear();
         waitingForIcons = true;
         parent.invoke(&GeometryTile::getIcons, std::move(iconDependencyMap));
     }
@@ -339,14 +333,18 @@ void GeometryTileWorker::redoLayout() {
         correlationID
     });
 
-    attemptPlacement();
+    if (hasPendingSymbolDependencies()) {
+        state = NeedPlacement;
+    } else {
+        attemptPlacement();
+    }
 }
 
 void GeometryTileWorker::attemptPlacement() {
     if (!data || !layers || !placementConfig || hasPendingSymbolDependencies()) {
         return;
     }
-
+    
     auto collisionTile = std::make_unique<CollisionTile>(*placementConfig);
     std::unordered_map<std::string, std::shared_ptr<Bucket>> buckets;
 
@@ -375,6 +373,9 @@ void GeometryTileWorker::attemptPlacement() {
         std::move(collisionTile),
         correlationID
     });
+    
+    state = Coalescing;
+    self.invoke(&GeometryTileWorker::coalesced);
 }
 
 } // namespace mbgl

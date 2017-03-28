@@ -39,10 +39,12 @@ public:
     void onIconsAvailable(IconAtlasMap icons);
 
 private:
-    void coalesce();
     void coalesced();
     void redoLayout();
     void attemptPlacement();
+    
+    bool hasGlyphDependencies(const GlyphDependencies&) const;
+    bool hasIconDependencies(const IconDependencyMap&) const;
     
     void symbolDependenciesChanged();
     bool hasPendingSymbolDependencies() const;
