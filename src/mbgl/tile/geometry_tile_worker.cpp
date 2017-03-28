@@ -122,6 +122,7 @@ void GeometryTileWorker::setLayers(std::vector<std::unique_ptr<Layer>> layers_, 
 
 void GeometryTileWorker::setPlacementConfig(PlacementConfig placementConfig_, uint64_t correlationID_) {
     try {
+        bool firstPlacement = !placementConfig;
         placementConfig = std::move(placementConfig_);
         correlationID = correlationID_;
 
@@ -135,7 +136,14 @@ void GeometryTileWorker::setPlacementConfig(PlacementConfig placementConfig_, ui
             break;
 
         case NeedPlacement:
+            if (firstPlacement) {
+                attemptPlacement();
+            }
+            break;
         case NeedLayout:
+            if (firstPlacement && !hasPendingSymbolDependencies()) {
+                redoLayout();
+            }
             break;
         }
     } catch (...) {
@@ -196,7 +204,12 @@ void GeometryTileWorker::coalesced() {
             break;
 
         case NeedLayout:
-            redoLayout();
+            if (!hasPendingSymbolDependencies()) {
+                // Don't re-trigger layout if we have outstanding symbol dependencies
+                // Redoing layout could invalidate the outstanding dependencies, but
+                // when they arrived we would treat them as valid
+                redoLayout();
+            }
             break;
 
         case NeedPlacement:
@@ -234,7 +247,6 @@ bool GeometryTileWorker::hasIconDependencies(const IconDependencyMap &iconDepend
 
 void GeometryTileWorker::redoLayout() {
     if (!data || !layers) {
-        // Waiting for initial configuration
         return;
     }
 
@@ -333,7 +345,7 @@ void GeometryTileWorker::redoLayout() {
         correlationID
     });
 
-    if (hasPendingSymbolDependencies()) {
+    if (!placementConfig || hasPendingSymbolDependencies()) {
         state = NeedPlacement;
     } else {
         attemptPlacement();
