@@ -664,7 +664,9 @@ void Map::resetZoom() {
     setZoom(0);
 }
 
-void Map::setMinZoom(const double minZoom) {
+#pragma mark - Bounds
+
+void Map::setMinZoom(double minZoom) {
     impl->transform.setMinZoom(minZoom);
     if (getZoom() < minZoom) {
         setZoom(minZoom);
@@ -675,7 +677,7 @@ double Map::getMinZoom() const {
     return impl->transform.getState().getMinZoom();
 }
 
-void Map::setMaxZoom(const double maxZoom) {
+void Map::setMaxZoom(double maxZoom) {
     impl->transform.setMaxZoom(maxZoom);
     if (getZoom() > maxZoom) {
         setZoom(maxZoom);

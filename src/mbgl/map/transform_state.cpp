@@ -137,7 +137,9 @@ double TransformState::getScale() const {
     return scale;
 }
 
-void TransformState::setMinZoom(const double minZoom) {
+#pragma mark - Bounds
+
+void TransformState::setMinZoom(double minZoom) {
     if (minZoom <= getMaxZoom()) {
         min_scale = zoomScale(util::clamp(minZoom, util::MIN_ZOOM, util::MAX_ZOOM));
     }
@@ -152,7 +154,7 @@ double TransformState::getMinZoom() const {
     return scaleZoom(test_scale);
 }
 
-void TransformState::setMaxZoom(const double maxZoom) {
+void TransformState::setMaxZoom(double maxZoom) {
     if (maxZoom >= getMinZoom()) {
         max_scale = zoomScale(util::clamp(maxZoom, util::MIN_ZOOM, util::MAX_ZOOM));
     }
