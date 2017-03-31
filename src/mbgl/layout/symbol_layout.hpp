@@ -6,6 +6,7 @@
 #include <mbgl/layout/symbol_instance.hpp>
 #include <mbgl/text/bidi.hpp>
 #include <mbgl/style/layers/symbol_layer_impl.hpp>
+#include <mbgl/programs/symbol_program.hpp>
 
 #include <memory>
 #include <map>
@@ -68,7 +69,8 @@ private:
 
     // Adds placed items to the buffer.
     template <typename Buffer>
-    void addSymbol(Buffer&, const SymbolQuad&, float scale,
+    void addSymbol(Buffer&, SymbolSizeData& sizeData, const SymbolQuad&, const SymbolFeature& feature,
+                    const style::DataDrivenPropertyValue<float>& size, float scale,
                     const bool keepUpright, const style::SymbolPlacementType, const float placementAngle,
                     WritingModeType writingModes);
 
@@ -79,7 +81,6 @@ private:
     const MapMode mode;
 
     style::SymbolLayoutProperties::PossiblyEvaluated layout;
-    float textMaxSize;
 
     SpriteAtlas& spriteAtlas;
 
@@ -88,6 +89,9 @@ private:
 
     bool sdfIcons = false;
     bool iconsNeedLinear = false;
+    
+    style::TextSize::UnevaluatedType textSize;
+    style::IconSize::UnevaluatedType iconSize;
 
     GlyphRangeSet ranges;
     std::vector<SymbolInstance> symbolInstances;
