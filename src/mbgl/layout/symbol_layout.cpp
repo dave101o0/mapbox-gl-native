@@ -40,14 +40,15 @@ static bool has(const style::SymbolLayoutProperties::PossiblyEvaluated& layout) 
 SymbolLayout::SymbolLayout(const BucketParameters& parameters,
                            const std::vector<const Layer*>& layers,
                            const GeometryTileLayer& sourceLayer,
-                           SpriteAtlas& spriteAtlas_,
+                           IconDependencies& iconDependencies,
+                           uintptr_t _spriteAtlasMapIndex,
                            GlyphDependencies& glyphDependencies)
     : sourceLayerName(sourceLayer.getName()),
       bucketName(layers.at(0)->getID()),
       overscaling(parameters.tileID.overscaleFactor()),
       zoom(parameters.tileID.overscaledZ),
       mode(parameters.mode),
-      spriteAtlas(spriteAtlas_),
+      spriteAtlasMapIndex(_spriteAtlasMapIndex),
       tileSize(util::tileSize * overscaling),
       tilePixelRatio(float(util::EXTENT) / tileSize) {
 
@@ -154,6 +155,7 @@ SymbolLayout::SymbolLayout(const BucketParameters& parameters,
                 icon = util::replaceTokens(icon, getValue);
             }
             ft.icon = icon;
+            iconDependencies.insert(*ft.icon);
         }
 
         if (ft.text || ft.icon) {
@@ -170,19 +172,7 @@ bool SymbolLayout::hasSymbolInstances() const {
     return !symbolInstances.empty();
 }
 
-bool SymbolLayout::canPrepare(const GlyphPositionMap& glyphs) {
-    if (has<TextField>(layout) && !layout.get<TextFont>().empty() && glyphs.empty()) {
-        return false;
-    }
-
-    if (has<IconImage>(layout) && !spriteAtlas.isLoaded()) {
-        return false;
-    }
-
-    return true;
-}
-
-void SymbolLayout::prepare(const GlyphPositionMap& glyphs) {
+void SymbolLayout::prepare(const GlyphPositionMap& glyphs, const IconAtlasMap& iconMap) {
     float horizontalAlign = 0.5;
     float verticalAlign = 0.5;
 
@@ -270,19 +260,21 @@ void SymbolLayout::prepare(const GlyphPositionMap& glyphs) {
 
         // if feature has icon, get sprite atlas position
         if (feature.icon) {
-            auto image = spriteAtlas.getIcon(*feature.icon);
-            if (image) {
-                shapedIcon = shapeIcon(*image,
-                    layout.evaluate<IconOffset>(zoom, feature),
-                    layout.evaluate<IconRotate>(zoom, feature) * util::DEG2RAD);
-                assert((*image).spriteImage);
-                if ((*image).spriteImage->sdf) {
-                    sdfIcons = true;
-                }
-                if ((*image).relativePixelRatio != 1.0f) {
-                    iconsNeedLinear = true;
-                } else if (layout.get<IconRotate>().constantOr(1) != 0) {
-                    iconsNeedLinear = true;
+            auto icons = iconMap.find(spriteAtlasMapIndex);
+            if (icons != iconMap.end()) {
+                auto image = icons->second.find(*feature.icon);
+                if (image != icons->second.end()) {
+                    shapedIcon = shapeIcon(image->second,
+                        layout.evaluate<IconOffset>(zoom, feature),
+                        layout.evaluate<IconRotate>(zoom, feature) * util::DEG2RAD);
+                    if (image->second.sdf) {
+                        sdfIcons = true;
+                    }
+                    if (image->second.relativePixelRatio != 1.0f) {
+                        iconsNeedLinear = true;
+                    } else if (layout.get<IconRotate>().constantOr(1) != 0) {
+                        iconsNeedLinear = true;
+                    }
                 }
             }
         }
