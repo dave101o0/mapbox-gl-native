@@ -505,41 +505,73 @@ TEST(Transform, Camera) {
 }
 
 TEST(Transform, DefaultTransform) {
-    Transform transform;
-    const TransformState& state = transform.getState();
+    struct TransformObserver : public mbgl::MapObserver {
+        void onCameraWillChange(MapObserver::CameraChangeMode) final {
+            cameraWillChangeCallback();
+        };
 
-    LatLng nullIsland, latLng = {};
-    ScreenCoordinate center, point = {};
+        void onCameraDidChange(MapObserver::CameraChangeMode) final {
+            cameraDidChangeCallback();
+        };
+
+        std::function<void()> cameraWillChangeCallback;
+        std::function<void()> cameraDidChangeCallback;
+    };
+
+    uint32_t cameraWillChangeCount = 0;
+    uint32_t cameraDidChangeCount = 0;
+
+    TransformObserver observer;
+    observer.cameraWillChangeCallback = [&cameraWillChangeCount]() { cameraWillChangeCount++; };
+    observer.cameraDidChangeCallback = [&cameraDidChangeCount]() { cameraDidChangeCount++; };
+
+    Transform transform(observer);
+
+    const TransformState& state = transform.getState();
+    ASSERT_FALSE(state.valid());
+
     const uint32_t min = 0;
     const uint32_t max = 65535;
 
-    auto testConversions = [&](const LatLng& coord, const ScreenCoordinate& screenCoord) {
-        latLng = state.screenCoordinateToLatLng(center);
-        ASSERT_NEAR(latLng.latitude, coord.latitude, 0.000001);
-        ASSERT_NEAR(latLng.longitude, coord.longitude, 0.000001);
-        point = state.latLngToScreenCoordinate(nullIsland);
-        ASSERT_DOUBLE_EQ(point.x, screenCoord.x);
-        ASSERT_DOUBLE_EQ(point.y, screenCoord.y);
-    };
+    // Cannot assign invalid sizes.
+    std::vector<Size> invalidSizes = { {}, { min, max }, { max, min } };
+    for (const Size& size : invalidSizes) {
+        ASSERT_FALSE(size.valid());
+        bool pass = false;
+        try {
+            transform.resize(size);
+        } catch (...) {
+            pass = true;
+        }
+        ASSERT_TRUE(pass) << "Expected to throw";
+    }
 
-    testConversions(nullIsland, center);
+    Size validSize { max, max };
+    ASSERT_TRUE(validSize.valid());
 
-    // Cannot assign the current size.
-    ASSERT_FALSE(transform.resize({}));
+    try {
+        transform.resize(validSize);
+        ASSERT_EQ(cameraWillChangeCount, 1u);
+        ASSERT_EQ(cameraDidChangeCount, 1u);
+    } catch (...) {
+        ASSERT_TRUE(false) << "Should not throw";
+    }
 
-    ASSERT_TRUE(transform.resize({ min, max }));
-    testConversions(nullIsland, center);
-
-    ASSERT_TRUE(transform.resize({ max, min }));
-    testConversions(nullIsland, center);
-
-    ASSERT_TRUE(transform.resize({ min, min }));
-    testConversions(nullIsland, center);
-
-    center = { max / 2., max / 2. };
+    ASSERT_TRUE(state.valid());
 
     // Double resize
-    ASSERT_TRUE(transform.resize({ max, max }));
-    ASSERT_FALSE(transform.resize({ max, max }));
-    testConversions(nullIsland, center);
+    try {
+        transform.resize(validSize);
+        ASSERT_EQ(cameraWillChangeCount, 1u);
+        ASSERT_EQ(cameraDidChangeCount, 1u);
+    } catch (...) {
+        ASSERT_TRUE(false) << "Should not throw";
+    }
+
+    ScreenCoordinate center = { max / 2., max / 2. };
+    LatLng latLng = state.screenCoordinateToLatLng(center);
+    ASSERT_NEAR(latLng.latitude, 0.0, 1e-7);
+    ASSERT_NEAR(latLng.longitude, 0.0, 1e-7);
+
+    ASSERT_EQ(state.latLngToScreenCoordinate({}), center);
 }

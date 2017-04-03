@@ -17,7 +17,7 @@ public:
         return width * height;
     }
 
-    constexpr explicit operator bool() const {
+    constexpr bool valid() const {
         return width > 0 && height > 0;
     }
 

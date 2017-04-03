@@ -45,9 +45,13 @@ Transform::Transform(MapObserver& observer_,
 
 #pragma mark - Map View
 
-bool Transform::resize(const Size size) {
+void Transform::resize(const Size size) {
+    if (!size.valid()) {
+        throw std::runtime_error("failed to resize: invalid size");
+    }
+
     if (state.size == size) {
-        return false;
+        return;
     }
 
     observer.onCameraWillChange(MapObserver::CameraChangeMode::Immediate);
@@ -56,8 +60,6 @@ bool Transform::resize(const Size size) {
     state.constrain(state.scale, state.x, state.y);
 
     observer.onCameraDidChange(MapObserver::CameraChangeMode::Immediate);
-
-    return true;
 }
 
 #pragma mark - Camera
