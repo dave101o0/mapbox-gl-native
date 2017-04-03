@@ -111,6 +111,10 @@ public:
     // Constructs a LatLngBounds object with the tile's exact boundaries.
     LatLngBounds(const CanonicalTileID&);
 
+    bool valid() const {
+        return (sw.latitude <= ne.latitude) && (sw.longitude <= ne.longitude);
+    }
+
     double south() const { return sw.latitude; }
     double west()  const { return sw.longitude; }
     double north() const { return ne.latitude; }
@@ -124,6 +128,16 @@ public:
     LatLng center() const {
         return LatLng((sw.latitude + ne.latitude) / 2,
                       (sw.longitude + ne.longitude) / 2);
+    }
+
+    LatLng constrain(const LatLng& p) const {
+        if (contains(p)) {
+            return p;
+        }
+        return LatLng {
+            p.latitude < sw.latitude ? sw.latitude : p.latitude > ne.latitude ? ne.latitude : p.latitude,
+            p.longitude < sw.longitude ? sw.longitude : p.longitude > ne.longitude ? ne.longitude : p.longitude,
+        };
     }
 
     void extend(const LatLng& point) {
